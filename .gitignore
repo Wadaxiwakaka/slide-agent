@@ -1,6 +1,7 @@
 node_modules
 .next
 *.pptx
+*.tsbuildinfo
 .env*
 !.env.example
 网页端chatgpt交谈汇总.md
