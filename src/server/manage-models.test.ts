@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { configError, createModel, editModel, listModels, removeModel, selectModel, testModelConnection } from './manage-models';
+import { checkJsonRequest, configError, createModel, editModel, listModels, removeModel, selectModel, testModelConnection } from './manage-models';
 import { loadSettings } from './model-config';
 import { POST } from '../app/api/models/route';
 
@@ -67,6 +67,12 @@ describe('local model management', () => {
       expect(await response.text()).toContain('401');
       expect(JSON.stringify(response.headers)).not.toContain('private-secret');
     }
+  });
+  it('accepts the real loopback Host when Next normalizes request.url to localhost', () => {
+    const request = new Request('http://localhost:3189/api/models', { method: 'POST', headers: { Host: '127.0.0.1:3189', Origin: 'http://127.0.0.1:3189', 'Content-Type': 'application/json' }, body: '{}' });
+    expect(checkJsonRequest(request)).toBeNull();
+    const rebound = new Request('http://localhost:3189/api/models', { method: 'POST', headers: { Host: 'evil.example:3189', Origin: 'http://evil.example:3189', 'Content-Type': 'application/json' }, body: '{}' });
+    expect(checkJsonRequest(rebound)?.status).toBe(403);
   });
   it('rejects cross-origin or non-JSON config writes before touching disk', async () => {
     const crossSite = new Request('http://127.0.0.1:3000/api/models', { method: 'POST', headers: { Origin: 'https://evil.example', 'Content-Type': 'application/json' }, body: JSON.stringify(inputs('First')) });

@@ -79,7 +79,14 @@ export async function parseJsonRequest(request: Request): Promise<unknown> {
 
 export function checkJsonRequest(request: Request): Response | null {
   const origin = request.headers.get('origin');
-  if (origin && origin !== new URL(request.url).origin) return Response.json({ error: '跨站请求被拒绝' }, { status: 403 });
+  const host = request.headers.get('host') ?? new URL(request.url).host;
+  try {
+    const parsedHost = new URL(`http://${host}`);
+    if (parsedHost.username || parsedHost.password || parsedHost.pathname !== '/' || !['127.0.0.1', 'localhost', '[::1]'].includes(parsedHost.hostname) ||
+      (origin && origin !== `${new URL(request.url).protocol}//${host}`)) {
+      return Response.json({ error: '跨站请求被拒绝' }, { status: 403 });
+    }
+  } catch { return Response.json({ error: '请求主机无效' }, { status: 403 }); }
   if (!request.headers.get('content-type')?.toLowerCase().startsWith('application/json')) return Response.json({ error: '仅接受 JSON' }, { status: 415 });
   return null;
 }
