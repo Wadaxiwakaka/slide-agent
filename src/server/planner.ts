@@ -11,6 +11,7 @@ export const generationRequestSchema = z.strictObject({
   slideCount: z.number().int().min(1).max(10),
 }).refine(({ topic, sourceText }) => Boolean(topic || sourceText), '请提供主题或原始文本');
 export type GenerationRequest = z.infer<typeof generationRequestSchema>;
+export class InvalidDeckError extends Error {}
 
 export async function planDeck(input: GenerationRequest, config: ModelConfig, key: string, fetcher: typeof fetch = fetch): Promise<DeckSpec> {
   const request = generationRequestSchema.parse(input);
@@ -27,5 +28,5 @@ export async function planDeck(input: GenerationRequest, config: ModelConfig, ke
       if (deck.slides.length === request.slideCount && deck.slides[0].layout === 'title') return deck;
     } catch { /* One same-model retry for invalid JSON/schema only. */ }
   }
-  throw new Error('模型两次输出均不符合演示文稿结构或页数要求，可能产生两次调用费用');
+  throw new InvalidDeckError('模型两次输出均不符合演示文稿结构或页数要求，可能产生两次调用费用');
 }
