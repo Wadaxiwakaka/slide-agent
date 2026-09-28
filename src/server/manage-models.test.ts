@@ -46,7 +46,7 @@ describe('local model management', () => {
       expect(init?.headers).toMatchObject({ Authorization: 'Bearer local-key' });
       return Response.json({ choices: [{ message: { content: 'OK' } }] });
     }) as typeof fetch;
-    await expect(testModelConnection(file, fetcher, { NODE_ENV: 'test' })).rejects.toThrow('SLIDEAGENT_API_KEY_SECOND');
+    await expect(testModelConnection(file, fetcher, { NODE_ENV: 'test' })).rejects.toThrow(/\.env\.local.*SLIDEAGENT_API_KEY_SECOND.*重启/u);
     await testModelConnection(file, fetcher, { NODE_ENV: 'test', SLIDEAGENT_API_KEY_SECOND: 'local-key' });
     expect(calls).toBe(1);
     await selectModel(file, null);

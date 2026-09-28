@@ -13,3 +13,5 @@
 - **M8** Natural Language Slide Editing。
 - **M9** Evaluation Framework。
 - **M10** Model Router / MCP（在确有需要时）。
+
+后续体验项：生成过程可视化，展示规划、布局、渲染、验证等环节；暂不排入 M2。

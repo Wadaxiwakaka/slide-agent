@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import ModelSettings, { type PublicSettings } from './model-settings';
+import FeedbackMessage, { type Feedback } from './feedback-message';
 
 async function fetchSettings(): Promise<PublicSettings> {
   const response = await fetch('/api/models');
@@ -17,15 +18,15 @@ export default function Studio() {
   const [purpose, setPurpose] = useState('介绍主题');
   const [slideCount, setSlideCount] = useState(5);
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState('');
+  const [feedback, setFeedback] = useState<Feedback | null>(null);
 
   const refresh = useCallback(async () => setSettings(await fetchSettings()), []);
-  useEffect(() => { void fetchSettings().then(setSettings).catch((error) => setMessage(error instanceof Error ? error.message : '读取配置失败')); }, []);
+  useEffect(() => { void fetchSettings().then(setSettings).catch((error) => setFeedback({ kind: 'error', text: error instanceof Error ? error.message : '读取配置失败' })); }, []);
 
   async function generate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!topic.trim() && !sourceText.trim()) { setMessage('请提供主题或原始文本'); return; }
-    setBusy(true); setMessage('正在规划并生成 PPTX，可能需要约一分钟…');
+    if (!topic.trim() && !sourceText.trim()) { setFeedback({ kind: 'error', text: '请提供主题或原始文本' }); return; }
+    setBusy(true); setFeedback({ kind: 'progress', text: '正在规划并生成 PPTX，可能需要约一分钟…' });
     try {
       const response = await fetch('/api/generate', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -37,8 +38,8 @@ export default function Studio() {
       link.href = url; link.download = 'slide-agent-generated.pptx';
       document.body.appendChild(link); link.click(); link.remove();
       setTimeout(() => URL.revokeObjectURL(url), 60_000);
-      setMessage('PPTX 已开始下载');
-    } catch (error) { setMessage(error instanceof Error ? error.message : '生成失败'); }
+      setFeedback({ kind: 'success', text: 'PPTX 已开始下载' });
+    } catch (error) { setFeedback({ kind: 'error', text: error instanceof Error ? error.message : '生成失败' }); }
     finally { setBusy(false); }
   }
 
@@ -56,7 +57,7 @@ export default function Studio() {
         <label className="grid gap-1 text-sm">页数（1–10）<input name="slideCount" type="number" min={1} max={10} required value={slideCount} onChange={(e) => setSlideCount(Number(e.target.value))} className="w-32 rounded-lg border border-slate-300 p-3" /></label>
         <p className="text-sm text-slate-600">当前模型：{settings?.models.find((model) => model.id === settings.activeId)?.name ?? '未选择'}</p>
         <button type="submit" disabled={busy || !settings?.activeId} className="min-h-12 rounded-xl bg-blue-700 px-6 font-semibold text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-50">生成 PPTX</button>
-        {message && <p role="status" className="text-sm text-slate-700">{message}</p>}
+        {feedback && <FeedbackMessage {...feedback} />}
       </form>
     </section>
     <ModelSettings settings={settings} refresh={refresh} />
