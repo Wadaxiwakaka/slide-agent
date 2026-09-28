@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { ModelConfig } from './model-config';
 
-class ModelApiError extends Error {}
+export class ModelApiError extends Error {}
 
 const openai = z.object({ choices: z.array(z.object({ message: z.object({ content: z.string() }) })) });
 const anthropic = z.object({ content: z.array(z.object({ type: z.string(), text: z.string().optional() })) });
