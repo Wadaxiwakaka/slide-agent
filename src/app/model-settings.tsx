@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, type FormEvent } from 'react';
+import FeedbackMessage, { type Feedback } from './feedback-message';
 
 type Protocol = 'openai' | 'anthropic' | 'gemini';
 type Model = { id: string; name: string; protocol: Protocol; baseUrl: string; modelId: string; keyAlias: string; hasKey: boolean };
@@ -21,11 +22,11 @@ export default function ModelSettings({ settings, refresh }: { settings: PublicS
   const [draft, setDraft] = useState(blank);
   const [editing, setEditing] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState('');
+  const [feedback, setFeedback] = useState<Feedback | null>(null);
   async function run(action: () => Promise<void>, success: string) {
-    setBusy(true); setMessage('');
-    try { await action(); await refresh(); setMessage(success); }
-    catch (error) { setMessage(error instanceof Error ? error.message : '操作失败'); }
+    setBusy(true); setFeedback(null);
+    try { await action(); await refresh(); setFeedback({ kind: 'success', text: success }); }
+    catch (error) { setFeedback({ kind: 'error', text: error instanceof Error ? error.message : '操作失败' }); }
     finally { setBusy(false); }
   }
   async function save(event: FormEvent<HTMLFormElement>) {
@@ -68,7 +69,7 @@ export default function ModelSettings({ settings, refresh }: { settings: PublicS
         <label className="grid gap-1 text-sm">密钥别名（环境变量后缀）<input required pattern="[A-Z][A-Z0-9_]*" value={draft.keyAlias} onChange={(e) => setDraft({ ...draft, keyAlias: e.target.value })} className="rounded-lg border border-slate-300 p-2" /></label>
         <div className="flex items-center gap-3 sm:col-span-2"><button disabled={busy} className="rounded-lg bg-blue-700 px-4 py-2 text-white disabled:opacity-50">{editing ? '保存更改' : '添加配置'}</button>{editing && <button type="button" onClick={() => { setEditing(null); setDraft(blank); }} className="text-slate-600">取消</button>}</div>
       </form>
-      {message && <p role="status" className="mt-4 text-sm">{message}</p>}
+      {feedback && <div className="mt-4"><FeedbackMessage {...feedback} /></div>}
     </section>
   );
 }
