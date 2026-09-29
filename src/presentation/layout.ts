@@ -15,6 +15,24 @@ export function assertWithinSlide(elements: Element[], theme: Theme): void {
   }
 }
 
+export class LayoutOverflowError extends Error {}
+
+function fitText(elements: Element[]): void {
+  // ponytail: conservative glyph budget; replace with measured text when M3 visual QA exists.
+  for (const element of elements) {
+    if (element.kind !== 'text') continue;
+    const fits = () => {
+      const capacity = element.w * 72 * 0.82 / element.size;
+      const units = (value: string) => [...value].reduce((total, char) => total + (/[^\x00-\x7F]/.test(char) ? 1 : /[ ilI.,:;!|]/.test(char) ? 0.35 : 0.58), 0);
+      if ([...element.value.matchAll(/[A-Za-z0-9_:/.-]+/g)].some(([word]) => units(word) > capacity)) return false;
+      const lines = element.value.split(/\r?\n/).reduce((sum, line) => sum + Math.max(1, Math.ceil(units(line) / capacity)), 0);
+      return lines * element.size * 1.22 <= element.h * 72;
+    };
+    while (element.size > 14 && !fits()) element.size--;
+    if (!fits()) throw new LayoutOverflowError('幻灯片文字过多，无法在当前版式中清晰显示，请缩短内容');
+  }
+}
+
 export function layoutSlide(slide: SlideSpec, theme: Theme): Element[] {
   const { width, margin, gap, colors } = theme;
   const usable = width - 2 * margin;
@@ -124,5 +142,6 @@ export function layoutSlide(slide: SlideSpec, theme: Theme): Element[] {
     }
   }
   assertWithinSlide(elements, theme);
+  fitText(elements);
   return elements;
 }
