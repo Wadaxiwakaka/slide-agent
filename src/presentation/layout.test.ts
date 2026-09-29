@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { demoDeck } from '../domain/demo';
-import { defaultTheme } from '../domain/theme';
+import { defaultTheme, themeForStyle } from '../domain/theme';
 import { assertWithinSlide, layoutSlide, type Element } from './layout';
 
 describe('deterministic layout', () => {
@@ -16,6 +16,23 @@ describe('deterministic layout', () => {
   it('returns the same geometry for the same content and theme', () => {
     const slide = demoDeck.slides[2];
     expect(layoutSlide(slide, defaultTheme)).toEqual(layoutSlide(slide, defaultTheme));
+  });
+
+  it('changes geometry in each existing layout without changing the classic demo', () => {
+    const geometry = (elements: Element[]) => elements.map(({ x, y, w, h }) => [x, y, w, h]);
+    for (const slide of demoDeck.slides) {
+      const classic = layoutSlide(slide, defaultTheme);
+      const dark = layoutSlide(slide, themeForStyle('dark'));
+      const warm = layoutSlide(slide, themeForStyle('warm'));
+      expect(dark).toEqual(layoutSlide(slide, themeForStyle('dark')));
+      expect(() => assertWithinSlide(dark, themeForStyle('dark'))).not.toThrow();
+      expect(() => assertWithinSlide(warm, themeForStyle('warm'))).not.toThrow();
+      expect(geometry(dark)).not.toEqual(geometry(classic));
+      expect(geometry(warm)).not.toEqual(geometry(classic));
+      expect(geometry(dark)).not.toEqual(geometry(warm));
+    }
+    expect(layoutSlide(demoDeck.slides[0], defaultTheme)[0].x).toBe(0.7);
+    expect(layoutSlide(demoDeck.slides[2], defaultTheme).find((element) => element.kind === 'rect' && element.h === 3.78)?.x).toBe(0.7);
   });
 
   it('does not overlap card surfaces', () => {
