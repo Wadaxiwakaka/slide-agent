@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ModelConfig } from './model-config';
 import { generationRequestSchema, planDeck } from './planner';
+import { outlineSchema } from '../domain/outline';
 
 const config: ModelConfig = { id: 'one', name: 'Test', protocol: 'openai', baseUrl: 'https://api.example.com/v1', modelId: 'test', keyAlias: 'WORK' };
 const request = { topic: '时间序列', sourceText: '过去三年的负荷记录', audience: '学生', purpose: '入门介绍', slideCount: 3, styleChoice: 'classic' as const };
@@ -59,6 +60,37 @@ describe('presentation planner', () => {
     expect(calls).toBe(2);
     try { await planDeck(request, config, 'secret-key', fetcher); } catch (error) { expect(String(error)).not.toContain('sensitive-data'); }
   });
+  it('preserves every approved title, layout, order and key message', async () => {
+    const approved = outlineSchema.parse({ title: '时间序列', slides: [
+      { id: 'cover', role: 'opening', layout: 'title', title: '新封面', keyMessage: '概要' },
+      { id: 'later', role: 'point', layout: 'title_body', title: '后页先讲', keyMessage: '论点乙' },
+      { id: 'earlier', role: 'summary', layout: 'title_body', title: '前页后讲', keyMessage: '论点甲' },
+    ] });
+    const planned = { title: '时间序列', slides: [
+      { layout: 'title', title: '新封面', subtitle: '概要' },
+      { layout: 'title_body', title: '后页先讲', bullets: ['论点乙'] },
+      { layout: 'title_body', title: '前页后讲', bullets: ['论点甲'] },
+    ] };
+    const fetcher = (async (_: RequestInfo | URL, init?: RequestInit) => {
+      const prompt = JSON.parse(String(init?.body)).messages[0].content as string;
+      for (const value of ['后页先讲', '前页后讲', '论点乙', '论点甲']) expect(prompt).toContain(value);
+      return reply(JSON.stringify({ deck: planned, styleId: 'warm' }));
+    }) as typeof fetch;
+    expect(await planDeck(request, config, 'secret-key', fetcher, approved)).toEqual({ deck: planned, suggestedStyle: 'warm' });
+  });
+
+  it('retries a deck that rewrites a confirmed point then rejects it safely', async () => {
+    const approved = outlineSchema.parse({ title: '时间序列', slides: [
+      { id: 'cover', role: 'opening', layout: 'title', title: '时间序列', keyMessage: '从数据预测未来' },
+      { id: 'data', role: 'point', layout: 'title_body', title: '数据', keyMessage: '必须保留的观点' },
+      { id: 'process', role: 'summary', layout: 'process', title: '过程', keyMessage: '准备历史数据' },
+    ] });
+    let calls = 0;
+    const fetcher = (async () => { calls++; return reply(JSON.stringify(deck)); }) as typeof fetch;
+    await expect(planDeck(request, config, 'secret-key', fetcher, approved)).rejects.toThrow(/两次/);
+    expect(calls).toBe(2);
+  });
+
   it('does not retry authentication/network errors', async () => {
     let calls = 0;
     const fetcher = (async () => { calls++; return new Response('denied', { status: 401 }); }) as typeof fetch;

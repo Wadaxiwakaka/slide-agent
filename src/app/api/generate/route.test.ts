@@ -120,6 +120,53 @@ describe('PPTX generation API', () => {
       expect(await response.text()).not.toContain('secret-value');
     }
   });
+  it('generates PPTX in the exact edited outline order without losing key messages', async () => {
+    const outline = { title: '预测', slides: [
+      { id: 'cover', role: 'opening', layout: 'title', title: '新的封面', keyMessage: '概述' },
+      { id: 'second', role: 'point', layout: 'title_body', title: '调整后的第一页', keyMessage: '必须出现乙' },
+      { id: 'first', role: 'summary', layout: 'title_body', title: '调整后的第二页', keyMessage: '必须出现甲' },
+    ] };
+    const planned = { title: '预测', slides: [
+      { layout: 'title', title: '新的封面', subtitle: '概述' },
+      { layout: 'title_body', title: '调整后的第一页', bullets: ['必须出现乙'] },
+      { layout: 'title_body', title: '调整后的第二页', bullets: ['必须出现甲'] },
+    ] };
+    const response = await createGenerateResponse({ input: { ...body, styleChoice: 'warm' }, outline }, await configured(), fake(JSON.stringify({ deck: planned, styleId: 'dark' })), env);
+    expect(response.status).toBe(200);
+    expect(response.headers.get('X-SlideAgent-Style')).toBe('warm');
+    const zip = await JSZip.loadAsync(await response.arrayBuffer());
+    for (const [number, values] of [[1, ['新的封面', '概述']], [2, ['调整后的第一页', '必须出现乙']], [3, ['调整后的第二页', '必须出现甲']]] as const) {
+      const xml = await zip.file(`ppt/slides/slide${number}.xml`)!.async('string');
+      for (const value of values) expect(xml).toContain(value);
+      expect(xml).toContain('<p:sp>');
+    }
+  });
+
+  it('rejects mismatched confirmation and unsupported facts before fetching or downloading', async () => {
+    const file = await configured();
+    const outline = { title: '预测', slides: [
+      { id: 'cover', role: 'opening', layout: 'title', title: '预测', keyMessage: '介绍' },
+      { id: 'two', role: 'point', layout: 'title_body', title: '方法', keyMessage: '数据' },
+      { id: 'three', role: 'summary', layout: 'three_cards', title: '应用', keyMessage: '甲' },
+    ] };
+    let calls = 0;
+    const fetcher = (async () => { calls++; return Response.json({ choices: [{ message: { content: JSON.stringify(deck) } }] }); }) as typeof fetch;
+    const bad = [
+      { ...outline, slides: [{ ...outline.slides[0], title: '长'.repeat(61) }, ...outline.slides.slice(1)] },
+      { ...outline, slides: [{ ...outline.slides[0], keyMessage: '2025年凭空增加' }, ...outline.slides.slice(1)] },
+      { ...outline, slides: [outline.slides[0], { id: 'two', role: 'evidence', layout: 'data_highlight', title: '增长', keyMessage: '很重要', sourceQuotes: ['增长率达到10%'] }, outline.slides[2]] },
+    ];
+    for (const edited of bad) {
+      const response = await createGenerateResponse({ input: body, outline: edited }, file, fetcher, env);
+      expect(response.status).toBe(400);
+      expect(response.headers.get('content-type')).toContain('application/json');
+    }
+    expect(calls).toBe(0);
+    const invalidOutput = await createGenerateResponse({ input: body, outline }, file, fake(JSON.stringify({ ...deck, slides: [{ ...deck.slides[0], title: '旧标题' }, ...deck.slides.slice(1)] })), env);
+    expect(invalidOutput.status).toBe(422);
+    expect(invalidOutput.headers.get('content-type')).toContain('application/json');
+  });
+
   it('rejects malformed or cross-site HTTP requests before accessing settings', async () => {
     const malformed = new Request('http://127.0.0.1:3000/api/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{oops' });
     expect((await POST(malformed)).status).toBe(400);

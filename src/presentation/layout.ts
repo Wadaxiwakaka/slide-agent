@@ -122,6 +122,37 @@ export function layoutSlide(slide: SlideSpec, theme: Theme): Element[] {
         });
         break;
       }
+      case 'timeline': {
+        if (theme.styleId === 'warm') {
+          slide.events.forEach(({ date, event }, i) => {
+            const y = 2.05 + i * 0.82;
+            rect(margin, y + 0.18, 0.1, 0.5, colors.primary);
+            text(date, margin + 0.32, y, 1.75, 0.73, 18, true, colors.primary);
+            text(event, margin + 2.2, y, usable - 2.35, 0.65, 17);
+          });
+        } else {
+          const w = (usable - (slide.events.length - 1) * gap) / slide.events.length;
+          slide.events.forEach(({ date, event }, i) => {
+            const x = margin + i * (w + gap);
+            const y = theme.styleId === 'dark' ? 2.17 + (i % 2) * 0.3 : 2.1;
+            rect(x, y, w, 0.08, colors.primary);
+            text(date, x + 0.12, y + 0.4, w - 0.24, 0.55, 20, true, colors.primary);
+            text(event, x + 0.12, y + 1.08, w - 0.24, 1.5, 17);
+          });
+        }
+        text(slide.takeaway, margin, 6.45, usable, 0.56, 18, true);
+        break;
+      }
+      case 'data_highlight': {
+        const centered = theme.styleId === 'dark';
+        const x = centered ? margin + usable * 0.2 : theme.styleId === 'warm' ? margin + 0.45 : margin;
+        const w = centered ? usable * 0.6 : usable - 0.5;
+        rect(x, 2.15, centered ? w : 0.12, centered ? 0.08 : 3.35, colors.primary);
+        text(slide.value, x + (centered ? 0 : 0.3), 2.55, w - 0.3, 1.48, 58, true, colors.primary, centered ? 'center' : 'left');
+        text(slide.label, x + (centered ? 0 : 0.3), 4.1, w - 0.3, 0.65, 22, false, colors.muted, centered ? 'center' : 'left');
+        text(slide.takeaway, margin, 6.12, usable, 0.8, 20, true, colors.ink, centered ? 'center' : 'left');
+        break;
+      }
       case 'process': {
         const columns = theme.styleId === 'dark' ? Math.ceil(slide.steps.length / 2) : slide.steps.length;
         const w = (usable - (columns - 1) * gap) / columns;
