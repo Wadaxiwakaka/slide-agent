@@ -57,7 +57,7 @@ export async function activeModel(filePath: string, env: NodeJS.ProcessEnv = pro
   const config = settings.models.find((model) => model.id === settings.activeId);
   if (!config) throw new ModelManagementError('未选择模型');
   try { return { config, key: resolveKey(config.keyAlias, env) }; }
-  catch { throw new ModelManagementError(`请设置 SLIDEAGENT_API_KEY_${config.keyAlias}`); }
+  catch { throw new ModelManagementError(`请在服务端 .env.local 或运行环境中设置 SLIDEAGENT_API_KEY_${config.keyAlias}，重启服务后重试`); }
 }
 
 export async function testModelConnection(filePath: string, fetcher: typeof fetch = fetch, env: NodeJS.ProcessEnv = process.env): Promise<void> {

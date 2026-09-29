@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import ModelSettings, { type PublicSettings } from './model-settings';
 import type { StyleChoice, StyleId } from '../domain/theme';
+import FeedbackMessage, { type Feedback } from './feedback-message';
 
 const styleNames: Record<StyleId, string> = { classic: '经典蓝', dark: '深色科技', warm: '暖色简报' };
 
@@ -21,15 +22,15 @@ export default function Studio() {
   const [slideCount, setSlideCount] = useState(5);
   const [styleChoice, setStyleChoice] = useState<StyleChoice>('auto');
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState('');
+  const [feedback, setFeedback] = useState<Feedback | null>(null);
 
   const refresh = useCallback(async () => setSettings(await fetchSettings()), []);
-  useEffect(() => { void fetchSettings().then(setSettings).catch((error) => setMessage(error instanceof Error ? error.message : '读取配置失败')); }, []);
+  useEffect(() => { void fetchSettings().then(setSettings).catch((error) => setFeedback({ kind: 'error', text: error instanceof Error ? error.message : '读取配置失败' })); }, []);
 
   async function generate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!topic.trim() && !sourceText.trim()) { setMessage('请提供主题或原始文本'); return; }
-    setBusy(true); setMessage('正在规划并生成 PPTX，可能需要约一分钟…');
+    if (!topic.trim() && !sourceText.trim()) { setFeedback({ kind: 'error', text: '请提供主题或原始文本' }); return; }
+    setBusy(true); setFeedback({ kind: 'progress', text: '正在规划并生成 PPTX，可能需要约一分钟…' });
     try {
       const response = await fetch('/api/generate', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -44,8 +45,8 @@ export default function Studio() {
       const style = response.headers.get('X-SlideAgent-Style');
       const chosen = style && Object.hasOwn(styleNames, style) ? styleNames[style as StyleId] : null;
       const fallback = styleChoice === 'auto' && style === 'classic' && response.headers.get('X-SlideAgent-Style-Fallback') === '1';
-      setMessage(chosen ? `PPTX 已开始下载 · ${fallback ? '未识别风格，已使用经典蓝' : `本次风格：${chosen}`}` : 'PPTX 已开始下载');
-    } catch (error) { setMessage(error instanceof Error ? error.message : '生成失败'); }
+      setFeedback({ kind: 'success', text: chosen ? `PPTX 已开始下载 · ${fallback ? '未识别风格，已使用经典蓝' : `本次风格：${chosen}`}` : 'PPTX 已开始下载' });
+    } catch (error) { setFeedback({ kind: 'error', text: error instanceof Error ? error.message : '生成失败' }); }
     finally { setBusy(false); }
   }
 
@@ -66,7 +67,7 @@ export default function Studio() {
         </div>
         <p className="text-sm text-slate-600">当前模型：{settings?.models.find((model) => model.id === settings.activeId)?.name ?? '未选择'}</p>
         <button type="submit" disabled={busy || !settings?.activeId} className="min-h-12 rounded-xl bg-blue-700 px-6 font-semibold text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-50">生成 PPTX</button>
-        {message && <p role="status" className="text-sm text-slate-700">{message}</p>}
+        {feedback && <FeedbackMessage {...feedback} />}
       </form>
     </section>
     <ModelSettings settings={settings} refresh={refresh} />
