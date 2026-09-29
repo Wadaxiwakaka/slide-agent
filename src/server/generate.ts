@@ -8,7 +8,7 @@ export async function createGenerateResponse(body: unknown, filePath: string, fe
   try {
     const input = generationRequestSchema.parse(body);
     const { config, key } = await activeModel(filePath, env);
-    const deck = await planDeck(input, config, key, fetcher);
+    const { deck } = await planDeck(input, config, key, fetcher);
     const bytes = await renderDeck(deck);
     return new Response(new Uint8Array(bytes), {
       headers: {
