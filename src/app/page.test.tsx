@@ -10,8 +10,9 @@ it('renders a locally gated generation form and keeps the demo available', () =>
   expect(html).toMatch(/<option value="auto" selected="">自动<\/option>/);
   expect(html).toContain('普通听众');
   expect(html).toContain('介绍主题');
-  expect(html).toContain('M2 · Style Intelligence');
+  expect(html).toContain('M2 · 内容大纲');
   expect(html).toContain('Generate Demo PPT');
   expect(html).toContain('管理模型配置');
-  expect(html).toMatch(/<button[^>]*disabled=""[^>]*>[^<]*生成 PPTX/);
+  expect(html).toMatch(/<button[^>]*disabled=""[^>]*>[^<]*生成大纲/);
+  expect(html).toContain('可能产生两次调用费用');
 });
