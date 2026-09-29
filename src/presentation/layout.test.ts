@@ -64,6 +64,40 @@ describe('deterministic layout', () => {
     }
   });
 
+  it('places evidence pages deterministically with editable content in three distinct themes', () => {
+    const slides: Extract<SlideSpec, { layout: 'timeline' | 'data_highlight' }>[] = [
+      { layout: 'timeline', title: '历程', takeaway: '项目持续推进', events: [
+        { date: '2022年', event: '启动', sourceQuote: '2022年启动' },
+        { date: '2024年', event: '落地', sourceQuote: '2024年落地' },
+      ] },
+      { layout: 'data_highlight', title: '增长', value: '10%', label: '增长率', takeaway: '增长显著', sourceQuote: '增长率达到10%' },
+    ];
+    for (const slide of slides) {
+      const geometries: string[] = [];
+      for (const id of ['classic', 'dark', 'warm'] as const) {
+        const theme = themeForStyle(id);
+        const elements = layoutSlide(slide, theme);
+        expect(elements).toEqual(layoutSlide(slide, theme));
+        expect(() => assertWithinSlide(elements, theme)).not.toThrow();
+        const visible = elements.filter((element) => element.kind === 'text').map((element) => element.value);
+        const expected = slide.layout === 'timeline'
+          ? [slide.title, slide.takeaway, ...slide.events.flatMap((event) => [event.date, event.event])]
+          : [slide.title, slide.value, slide.label, slide.takeaway];
+        for (const item of expected) expect(visible).toContain(item);
+        expect(visible).not.toContain(slide.layout === 'timeline' ? slide.events[0].sourceQuote : slide.sourceQuote);
+        geometries.push(JSON.stringify(elements.map(({ x, y, w, h }) => [x, y, w, h])));
+      }
+      expect(new Set(geometries).size).toBe(3);
+    }
+  });
+
+  it('rejects dense five-event timelines rather than truncating content', () => {
+    const slide: SlideSpec = { layout: 'timeline', title: '历程', takeaway: '摘要', events: Array.from({ length: 5 }, (_, index) => ({
+      date: `202${index}年`, event: '难'.repeat(110), sourceQuote: `202${index}年发生事件`,
+    })) };
+    for (const id of ['classic', 'dark', 'warm'] as const) expect(() => layoutSlide(slide, themeForStyle(id)), id).toThrow(LayoutOverflowError);
+  });
+
   it('does not overlap card surfaces', () => {
     const cards = layoutSlide(demoDeck.slides[2], defaultTheme).filter((el) => el.kind === 'rect' && el.h > 2);
     expect(cards).toHaveLength(3);
