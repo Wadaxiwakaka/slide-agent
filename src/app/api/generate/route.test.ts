@@ -44,6 +44,60 @@ describe('PPTX generation API', () => {
       expect(xml).toContain('<p:sp>');
     }
   });
+  it('renders the manual style, not the model suggestion', async () => {
+    const file = await configured();
+    const modelReply = fake(JSON.stringify({ deck, styleId: 'dark' }));
+    const warm = await createGenerateResponse({ ...body, styleChoice: 'warm' }, file, modelReply, env);
+    const dark = await createGenerateResponse({ ...body, styleChoice: 'auto' }, file, modelReply, env);
+    expect(warm.status).toBe(200);
+    expect(warm.headers.get('X-SlideAgent-Style')).toBe('warm');
+    expect(warm.headers.has('X-SlideAgent-Style-Fallback')).toBe(false);
+    expect(dark.headers.get('X-SlideAgent-Style')).toBe('dark');
+    const warmZip = await JSZip.loadAsync(await warm.arrayBuffer());
+    const darkZip = await JSZip.loadAsync(await dark.arrayBuffer());
+    const warmXml = await warmZip.file('ppt/slides/slide1.xml')!.async('string');
+    const darkXml = await darkZip.file('ppt/slides/slide1.xml')!.async('string');
+    expect(warmXml).toContain('FFF8EC');
+    expect(darkXml).toContain('0B1224');
+    expect(warmXml).toContain('<a:t>');
+    expect(warmXml).toContain('<p:sp>');
+    expect(warmXml).not.toBe(darkXml);
+  });
+  it('falls back to classic without charging for another call when only the style is invalid', async () => {
+    const file = await configured();
+    for (const content of [JSON.stringify(deck), JSON.stringify({ deck, styleId: 'neon' })]) {
+      let calls = 0;
+      const fetcher = (async () => { calls++; return Response.json({ choices: [{ message: { content } }] }); }) as typeof fetch;
+      const response = await createGenerateResponse({ ...body, styleChoice: 'auto' }, file, fetcher, env);
+      expect(response.status).toBe(200);
+      expect(response.headers.get('X-SlideAgent-Style')).toBe('classic');
+      expect(response.headers.get('X-SlideAgent-Style-Fallback')).toBe('1');
+      expect(calls).toBe(1);
+    }
+    const legacy = await createGenerateResponse(body, file, fake(JSON.stringify(deck)), env);
+    expect(legacy.headers.get('X-SlideAgent-Style')).toBe('classic');
+    expect(legacy.headers.has('X-SlideAgent-Style-Fallback')).toBe(false);
+  });
+  it('rejects unknown style or extra fields before calling the model', async () => {
+    const file = await configured();
+    let calls = 0;
+    const fetcher = (async () => { calls++; return Response.json({ choices: [{ message: { content: JSON.stringify(deck) } }] }); }) as typeof fetch;
+    for (const invalid of [{ ...body, styleChoice: 'neon' }, { ...body, extra: 'ignored?' }]) {
+      const response = await createGenerateResponse(invalid, file, fetcher, env);
+      expect(response.status).toBe(400);
+      expect(response.headers.get('content-type')).toContain('application/json');
+    }
+    expect(calls).toBe(0);
+  });
+  it('returns a safe JSON error instead of a PPTX for unfit text', async () => {
+    const file = await configured();
+    const dense = { ...deck, slides: [deck.slides[0], deck.slides[1], { layout: 'process', title: '流程', steps: Array.from({ length: 5 }, (_, i) => ({ heading: `步骤${i + 1}`, detail: '长'.repeat(110) })) }] };
+    const response = await createGenerateResponse({ ...body, styleChoice: 'warm' }, file, fake(JSON.stringify({ deck: dense, styleId: 'dark' })), env);
+    expect(response.status).toBe(422);
+    expect(response.headers.get('content-type')).toContain('application/json');
+    expect(response.headers.has('X-SlideAgent-Style')).toBe(false);
+    expect(await response.text()).toContain('文字');
+  });
   it('requires an active model, env key and valid generation input', async () => {
     const file = await configured();
     await selectModel(file, null);

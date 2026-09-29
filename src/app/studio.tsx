@@ -2,7 +2,10 @@
 
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import ModelSettings, { type PublicSettings } from './model-settings';
+import type { StyleChoice, StyleId } from '../domain/theme';
 import FeedbackMessage, { type Feedback } from './feedback-message';
+
+const styleNames: Record<StyleId, string> = { classic: '经典蓝', dark: '深色科技', warm: '暖色简报' };
 
 async function fetchSettings(): Promise<PublicSettings> {
   const response = await fetch('/api/models');
@@ -17,6 +20,7 @@ export default function Studio() {
   const [audience, setAudience] = useState('普通听众');
   const [purpose, setPurpose] = useState('介绍主题');
   const [slideCount, setSlideCount] = useState(5);
+  const [styleChoice, setStyleChoice] = useState<StyleChoice>('auto');
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
 
@@ -30,7 +34,7 @@ export default function Studio() {
     try {
       const response = await fetch('/api/generate', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ topic, sourceText, audience, purpose, slideCount }),
+        body: JSON.stringify({ topic, sourceText, audience, purpose, slideCount, styleChoice }),
       });
       if (!response.ok) throw new Error((await response.json()).error ?? '生成失败');
       const url = URL.createObjectURL(await response.blob());
@@ -38,7 +42,10 @@ export default function Studio() {
       link.href = url; link.download = 'slide-agent-generated.pptx';
       document.body.appendChild(link); link.click(); link.remove();
       setTimeout(() => URL.revokeObjectURL(url), 60_000);
-      setFeedback({ kind: 'success', text: 'PPTX 已开始下载' });
+      const style = response.headers.get('X-SlideAgent-Style');
+      const chosen = style && Object.hasOwn(styleNames, style) ? styleNames[style as StyleId] : null;
+      const fallback = styleChoice === 'auto' && style === 'classic' && response.headers.get('X-SlideAgent-Style-Fallback') === '1';
+      setFeedback({ kind: 'success', text: chosen ? `PPTX 已开始下载 · ${fallback ? '未识别风格，已使用经典蓝' : `本次风格：${chosen}`}` : 'PPTX 已开始下载' });
     } catch (error) { setFeedback({ kind: 'error', text: error instanceof Error ? error.message : '生成失败' }); }
     finally { setBusy(false); }
   }
@@ -54,7 +61,10 @@ export default function Studio() {
           <label className="grid gap-1 text-sm">受众<input name="audience" required maxLength={120} value={audience} onChange={(e) => setAudience(e.target.value)} className="rounded-lg border border-slate-300 p-3" /></label>
           <label className="grid gap-1 text-sm">演示目的<input name="purpose" required maxLength={120} value={purpose} onChange={(e) => setPurpose(e.target.value)} className="rounded-lg border border-slate-300 p-3" /></label>
         </div>
-        <label className="grid gap-1 text-sm">页数（1–10）<input name="slideCount" type="number" min={1} max={10} required value={slideCount} onChange={(e) => setSlideCount(Number(e.target.value))} className="w-32 rounded-lg border border-slate-300 p-3" /></label>
+        <div className="flex flex-wrap gap-4">
+          <label className="grid gap-1 text-sm">页数（1–10）<input name="slideCount" type="number" min={1} max={10} required value={slideCount} onChange={(e) => setSlideCount(Number(e.target.value))} className="w-32 rounded-lg border border-slate-300 p-3" /></label>
+          <label className="grid gap-1 text-sm">视觉风格<select name="styleChoice" value={styleChoice} onChange={(e) => setStyleChoice(e.target.value as StyleChoice)} className="min-w-44 rounded-lg border border-slate-300 p-3"><option value="auto">自动</option><option value="classic">经典蓝</option><option value="dark">深色科技</option><option value="warm">暖色简报</option></select></label>
+        </div>
         <p className="text-sm text-slate-600">当前模型：{settings?.models.find((model) => model.id === settings.activeId)?.name ?? '未选择'}</p>
         <button type="submit" disabled={busy || !settings?.activeId} className="min-h-12 rounded-xl bg-blue-700 px-6 font-semibold text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-50">生成 PPTX</button>
         {feedback && <FeedbackMessage {...feedback} />}
