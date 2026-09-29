@@ -1,5 +1,7 @@
 import { z } from 'zod';
 import { renderDeck } from '../presentation/render';
+import { LayoutOverflowError } from '../presentation/layout';
+import { themeForStyle } from '../domain/theme';
 import { ModelApiError } from './model-api';
 import { activeModel, ModelManagementError } from './manage-models';
 import { generationRequestSchema, InvalidDeckError, planDeck } from './planner';
@@ -8,14 +10,18 @@ export async function createGenerateResponse(body: unknown, filePath: string, fe
   try {
     const input = generationRequestSchema.parse(body);
     const { config, key } = await activeModel(filePath, env);
-    const { deck } = await planDeck(input, config, key, fetcher);
-    const bytes = await renderDeck(deck);
+    const { deck, suggestedStyle } = await planDeck(input, config, key, fetcher);
+    const styleId = input.styleChoice === 'auto' ? suggestedStyle ?? 'classic' : input.styleChoice;
+    const fallback = input.styleChoice === 'auto' && !suggestedStyle;
+    const bytes = await renderDeck(deck, themeForStyle(styleId));
     return new Response(new Uint8Array(bytes), {
       headers: {
         'Content-Type': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
         'Content-Disposition': 'attachment; filename="slide-agent-generated.pptx"',
         'Content-Length': String(bytes.length),
         'Cache-Control': 'no-store',
+        'X-SlideAgent-Style': styleId,
+        ...(fallback ? { 'X-SlideAgent-Style-Fallback': '1' } : {}),
       },
     });
   } catch (error) {
@@ -23,6 +29,7 @@ export async function createGenerateResponse(body: unknown, filePath: string, fe
     if (error instanceof ModelManagementError) return Response.json({ error: error.message }, { status: 400 });
     if (error instanceof ModelApiError) return Response.json({ error: error.message }, { status: 502 });
     if (error instanceof InvalidDeckError) return Response.json({ error: error.message }, { status: 422 });
+    if (error instanceof LayoutOverflowError) return Response.json({ error: '页面文字过多，请缩短内容或增加页数后重试' }, { status: 422 });
     return Response.json({ error: '生成失败，请检查本地配置或排版约束' }, { status: 500 });
   }
 }
