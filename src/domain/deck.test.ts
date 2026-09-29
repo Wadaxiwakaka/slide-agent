@@ -23,4 +23,18 @@ describe('DeckSpec', () => {
   it('rejects absolute coordinates in semantic content', () => {
     expect(deckSchema.safeParse({ title: 'X', slides: [{ layout: 'title', title: 'X', x: 1 }] }).success).toBe(false);
   });
+
+  it('accepts source-backed semantic pages and rejects missing evidence', () => {
+    const timeline = { layout: 'timeline', title: '发展历程', takeaway: '稳步增长', events: [
+      { date: '2022年', event: '项目启动', sourceQuote: '2022年项目启动' },
+      { date: '2024年', event: '项目落地', sourceQuote: '2024年项目落地' },
+    ] };
+    const data = { layout: 'data_highlight', title: '重要数据', value: '10%', label: '增长率', takeaway: '增长显著', sourceQuote: '增长率达到10%' };
+    expect(deckSchema.parse({ title: '报告', slides: [timeline, data] }).slides.map((slide) => slide.layout)).toEqual(['timeline', 'data_highlight']);
+    expect(deckSchema.safeParse({ title: '报告', slides: [{ ...timeline, events: timeline.events.slice(0, 1) }] }).success).toBe(false);
+    expect(deckSchema.safeParse({ title: '报告', slides: [{ ...timeline, events: [{ ...timeline.events[0], sourceQuote: '' }, timeline.events[1]] }] }).success).toBe(false);
+    expect(deckSchema.safeParse({ title: '报告', slides: [{ ...data, sourceQuote: undefined }] }).success).toBe(false);
+    expect(deckSchema.safeParse({ title: '报告', slides: [{ ...data, x: 1 }] }).success).toBe(false);
+    expect(deckSchema.safeParse(demoDeck).success).toBe(true);
+  });
 });

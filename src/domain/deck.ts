@@ -3,6 +3,8 @@ import { z } from 'zod';
 const title = z.string().trim().min(1).max(60);
 const heading = z.string().trim().min(1).max(42);
 const text = z.string().trim().min(1).max(110);
+const fact = z.string().trim().min(1).max(32);
+const sourceQuote = z.string().trim().min(1).max(200);
 
 const slide = z.discriminatedUnion('layout', [
   z.strictObject({ layout: z.literal('title'), title, subtitle: text }),
@@ -18,6 +20,12 @@ const slide = z.discriminatedUnion('layout', [
   }),
   z.strictObject({ layout: z.literal('process'), title,
     steps: z.array(z.strictObject({ heading, detail: text })).min(2).max(5),
+  }),
+  z.strictObject({ layout: z.literal('timeline'), title, takeaway: text,
+    events: z.array(z.strictObject({ date: fact, event: text, sourceQuote })).min(2).max(5),
+  }),
+  z.strictObject({ layout: z.literal('data_highlight'), title, value: fact,
+    label: heading, takeaway: text, sourceQuote,
   }),
 ]);
 
