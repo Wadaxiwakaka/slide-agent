@@ -25,6 +25,7 @@ describe('editable outline', () => {
   it('requires distinct evidence for evidence slides but no speculative quotes on points', () => {
     expect(parse([opening, { ...timeline, sourceQuotes: [] }])).toBe(false);
     expect(parse([opening, { ...timeline, sourceQuotes: ['2022年项目启动', '2022年项目启动'] }])).toBe(false);
+    expect(parse([opening, { ...timeline, sourceQuotes: [...timeline.sourceQuotes].reverse() }])).toBe(false);
     expect(parse([opening, { ...timeline, sourceQuotes: ['2022年项目启动', '项目交付'] }])).toBe(false);
     expect(parse([opening, { ...point, role: 'evidence' }])).toBe(false);
     expect(parse([opening, { ...point, sourceQuotes: ['依据'] }])).toBe(false);

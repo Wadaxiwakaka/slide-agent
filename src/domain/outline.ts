@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { SlideSpec } from './deck';
+import { datesInOrder, type SlideSpec } from './deck';
 
 const quote = z.string().trim().min(1).max(200);
 const slide = z.strictObject({
@@ -16,8 +16,8 @@ const slide = z.strictObject({
     context.addIssue({ code: 'custom', message: '页面来源片段无效' });
   }
   // ponytail: deliberately narrow explicit-date recognition; relative or written-out dates need ordinary pages.
-  if (page.layout === 'timeline' && quotes.some((value) => !/(?:\d{4}年?|\d{4}[-/.]\d{1,2}|\d{1,2}月\d{1,2}日)/.test(value) || !hasContext(value))) {
-    context.addIssue({ code: 'custom', message: '时间轴必须包含明确日期与事件原文' });
+  if (page.layout === 'timeline' && (quotes.some((value) => !/(?:\d{4}年?|\d{4}[-/.]\d{1,2}|\d{1,2}月\d{1,2}日)/.test(value) || !hasContext(value)) || !datesInOrder(quotes))) {
+    context.addIssue({ code: 'custom', message: '时间轴必须包含明确且按顺序排列的日期与事件原文' });
   }
   if (page.layout === 'data_highlight' && quotes.some((value) => !/\d/.test(value) || !hasContext(value))) {
     context.addIssue({ code: 'custom', message: '数据页面需要原始数值和含义' });

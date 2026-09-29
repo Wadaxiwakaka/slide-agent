@@ -32,6 +32,7 @@ describe('DeckSpec', () => {
     const data = { layout: 'data_highlight', title: '重要数据', value: '10%', label: '增长率', takeaway: '增长显著', sourceQuote: '增长率达到10%' };
     expect(deckSchema.parse({ title: '报告', slides: [timeline, data] }).slides.map((slide) => slide.layout)).toEqual(['timeline', 'data_highlight']);
     expect(deckSchema.safeParse({ title: '报告', slides: [{ ...timeline, events: timeline.events.slice(0, 1) }] }).success).toBe(false);
+    expect(deckSchema.safeParse({ title: '报告', slides: [{ ...timeline, events: [...timeline.events].reverse() }] }).success).toBe(false);
     expect(deckSchema.safeParse({ title: '报告', slides: [{ ...timeline, events: [{ ...timeline.events[0], sourceQuote: '' }, timeline.events[1]] }] }).success).toBe(false);
     expect(deckSchema.safeParse({ title: '报告', slides: [{ ...data, sourceQuote: undefined }] }).success).toBe(false);
     expect(deckSchema.safeParse({ title: '报告', slides: [{ ...data, x: 1 }] }).success).toBe(false);
