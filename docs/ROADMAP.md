@@ -7,7 +7,7 @@
 - **M2** Style Intelligence + Content Intelligence：三套主题及五种原有页面；补做先编辑确认大纲再生成 PPTX，新增原文可支持的时间轴与数据重点页。生成后换肤和制作进度另行规划。
 - **M3** Preview Renderer：先预览再确认下载；生成后网页内多轮编辑仍在后续阶段。
 - **M4** Rule-based QA：扩展规则检查。
-- **M5** VLM Visual QA + Automatic Repair。
+- **M5** VLM Visual QA + Automatic Repair：视觉模型审查实际渲染页面并迭代优化。流程为“渲染 → 逐页视觉审查 → 输出带页码的问题与修复建议 → 调整语义内容/风格约束/确定性布局规则 → 重新渲染并复查”。检查遮挡、溢出、可读性、对齐、留白、层级与跨页一致性；有用户参考时还检查与已确认参考风格的贴合度。每轮结合 M4 的规则检查，保持用户确认的内容与可编辑 PPTX，不让视觉模型任意输出绝对坐标或用整页图片替代成稿。后续规格须定义最大轮数、调用/费用预算与停止条件；达标、无改善或预算耗尽即停止，未解决问题明确告知用户并保留可比较版本，最终由用户确认。不把模型自评当作质量保证，不纳入当前长材料交付。
 - **M6** PDF / DOCX / Web Research。
 - **M7** Asset Search + Image Generation。
 - **M8** Natural Language Slide Editing。
