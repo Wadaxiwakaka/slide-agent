@@ -4,6 +4,11 @@ import { demoDeck } from './demo';
 
 // Removing any layout variant or weakening its content bounds should fail these checks.
 describe('DeckSpec', () => {
+  it('renders at most 100 semantic pages', () => {
+    const page = { layout: 'title_body', title: '内容', bullets: ['观点'] };
+    expect(deckSchema.safeParse({ title: '长文稿', slides: Array(100).fill(page) }).success).toBe(true);
+    expect(deckSchema.safeParse({ title: '长文稿', slides: Array(101).fill(page) }).success).toBe(false);
+  });
   it('accepts the five-slide demo with each supported layout', () => {
     expect(deckSchema.parse(demoDeck).slides.map((slide) => slide.layout)).toEqual([
       'title', 'title_body', 'three_cards', 'comparison', 'process',

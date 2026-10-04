@@ -47,7 +47,7 @@ const slide = z.discriminatedUnion('layout', [
 
 export const deckSchema = z.strictObject({
   title,
-  slides: z.array(slide).min(1).max(30),
+  slides: z.array(slide).min(1).max(100),
 });
 
 export type SlideSpec = z.infer<typeof slide>;

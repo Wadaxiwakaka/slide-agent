@@ -30,7 +30,7 @@ function hasContext(value: string): boolean {
 
 export const outlineSchema = z.strictObject({
   title: z.string().trim().min(1).max(60),
-  slides: z.array(slide).min(1).max(10),
+  slides: z.array(slide).min(1).max(100),
 }).superRefine(({ slides }, context) => {
   if (slides[0].role !== 'opening' || slides[0].layout !== 'title' || slides.slice(1).some((page) => page.layout === 'title' || page.role === 'opening') ||
     new Set(slides.map((page) => page.id)).size !== slides.length) {

@@ -8,6 +8,11 @@ const timeline = { id: 'history', role: 'evidence', layout: 'timeline', title: '
 const parse = (slides: unknown[]) => outlineSchema.safeParse({ title: '报告', slides }).success;
 
 describe('editable outline', () => {
+  it('accepts 100 unique pages but never 101', () => {
+    const pages = [opening, ...Array.from({ length: 99 }, (_, i) => ({ ...point, id: `point-${i}` }))];
+    expect(parse(pages)).toBe(true);
+    expect(parse([...pages, { ...point, id: 'too-many' }])).toBe(false);
+  });
   it('accepts a short presentation with one fixed cover', () => {
     expect(parse([opening])).toBe(true);
     expect(parse([opening, point, timeline])).toBe(true);
