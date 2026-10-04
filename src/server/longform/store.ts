@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { randomUUID, createHash } from 'node:crypto';
-import { mkdir, readFile, writeFile, rename, rm, readdir } from 'node:fs/promises';
+import { mkdir, readFile, writeFile, rename, rm, readdir, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { longformRequestSchema, type LongformRequest } from '../../domain/longform';
 import { outlineSchema } from '../../domain/outline';
@@ -14,7 +14,7 @@ export const jobSchema=z.strictObject({
   id:z.uuid(),input:longformRequestSchema,modelConfigId:z.string().min(1),modelFingerprint:z.string(),
   stage:z.enum(['summarize','story','outline','review','content','ready']),cursor:z.number().int().nonnegative(),summaryLevel:z.number().int().nonnegative(),
   chunks:z.array(sourceChunkSchema).max(200_000),digests:z.array(sourceDigestSchema).max(200_000),mergedDigests:z.array(sourceDigestSchema).max(200_000),
-  story:storySchema.optional(),outlineParts:z.array(z.array(outlineSchema.shape.slides.element).max(8)).max(100),outline:outlineSchema.optional(),acceptedPages:z.number().int().min(1).max(100).optional(),
+  story:storySchema.optional(),outlineParts:z.array(z.array(outlineSchema.shape.slides.element).max(8)).max(100),outline:outlineSchema.optional(),draftOutline:outlineSchema.optional(),acceptedPages:z.number().int().min(1).max(100).optional(),
   completed:z.array(z.array(anchoredPageSchema).max(100)).max(100),suggestedStyle:styleChoiceSchema.exclude(['auto']).nullable().optional(),revision:z.string().regex(/^[a-f0-9]{64}$/),error:z.string().max(500).optional(),updatedAt:z.number().nonnegative(),
 });
 export type LongformJob=z.infer<typeof jobSchema>;
@@ -47,7 +47,15 @@ export async function deleteJob(root:string,id:string):Promise<void>{const path=
 export async function expireJobs(root:string,now=Date.now()):Promise<void>{
   await mkdir(root,{recursive:true,mode:0o700});
   for(const name of await readdir(root)){
-    const id=name.replace(/\.json$/,'');if(name!==id+'.json'||!z.uuid().safeParse(id).success||locks.has(id))continue;
-    try{const job=await readJob(root,id);if(now-job.updatedAt>=7*86_400_000)await deleteJob(root,id);}catch{/* Damaged checkpoints are not executed; user can delete them. */}
+    const [id,suffix,tempId,end]=name.split('.');
+    if(!z.uuid().safeParse(id).success || suffix!=='json' || locks.has(id))continue;
+    const isTemp=z.uuid().safeParse(tempId).success && end==='tmp' && name===`${id}.json.${tempId}.tmp`;
+    if(name!==id+'.json'&&!isTemp)continue;
+    try{
+      if(!isTemp){
+        try{const job=await readJob(root,id);if(now-job.updatedAt>=7*86_400_000)await deleteJob(root,id);continue;}catch{/* Old damaged snapshots use filesystem age, never execute contents. */}
+      }
+      const path=join(root,name);if(now-(await stat(path)).mtimeMs>=7*86_400_000)await withJobLock(id,()=>rm(path,{force:true}));
+    }catch{/* Another request may have removed the file; cleanup never triggers a model. */}
   }
 }

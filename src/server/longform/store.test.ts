@@ -1,5 +1,5 @@
 import { describe,expect,it } from 'vitest';
-import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, writeFile, rm,utimes } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createJob,readJob,saveJob,deleteJob,expireJobs,withJobLock } from './store';
@@ -29,6 +29,15 @@ describe('local job checkpoints',()=>{
     try{
       const old=await createJob(root,input,'model',now-7*86400000);const fresh=await createJob(root,input,'model',now-1000);
       await expireJobs(root,now);await expect(readJob(root,old.id)).rejects.toThrow();expect((await readJob(root,fresh.id)).id).toBe(fresh.id);
+    }finally{await rm(root,{recursive:true,force:true});}
+  });
+  it('cleans abandoned atomic-write materials and old damaged checkpoints',async()=>{
+    const root=await mkdtemp(join(tmpdir(),'slide-job-'));const now=Date.now(),oldDate=new Date(now-8*86400000);
+    try{
+      const job=await createJob(root,input,'model');const path=join(root,job.id+'.json');await writeFile(path,'damaged private material');await utimes(path,oldDate,oldDate);
+      const temp=path+'.123e4567-e89b-42d3-a456-426614174000.tmp';await writeFile(temp,'abandoned private material');await utimes(temp,oldDate,oldDate);
+      const fresh=temp.replace('123e4567','123e4568');await writeFile(fresh,'recent pending write');
+      await expireJobs(root,now);await expect(readFile(path)).rejects.toThrow();await expect(readFile(temp)).rejects.toThrow();expect(await readFile(fresh,'utf8')).toBe('recent pending write');
     }finally{await rm(root,{recursive:true,force:true});}
   });
   it('rejects a concurrent invocation rather than queuing a second paid batch',async()=>{

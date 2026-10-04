@@ -5,7 +5,7 @@ import { outlineSchema } from '../../domain/outline';
 import { activeModel,checkJsonRequest,checkLocalRequest,ModelManagementError } from '../manage-models';
 import { settingsFile } from '../model-config';
 import { JobError,createJob,readJob,deleteJob,expireJobs } from './store';
-import { jobStatus,modelFingerprint,stepJob,confirmJobOutline,downloadJob,type JobDeps } from './job';
+import { jobStatus,modelFingerprint,stepJob,confirmJobOutline,saveJobDraft,downloadJob,type JobDeps } from './job';
 export const jobDeps:JobDeps={root:join(process.cwd(),'data','longform-jobs'),settingsFile,env:process.env,fetcher:fetch};
 export async function readBoundedJson(request:Request,limit=1_048_576):Promise<unknown>{
   const reader=request.body?.getReader();if(!reader)throw new JobError('请求JSON无效');
@@ -30,6 +30,10 @@ export async function handleJobRequest(request:Request,action:'create'|'get'|'de
     if(action==='download')return await downloadJob(id,deps);
     const checkpoint=z.string().regex(/^[a-f0-9]{64}$/);
     if(action==='step'){const parsed=z.strictObject({checkpoint}).parse(body);return json({status:await stepJob(id,deps,parsed.checkpoint)});}
+    if(body && typeof body==='object' && 'draft' in body){
+      const parsed=z.strictObject({draft:z.literal(true),outline:outlineSchema,checkpoint}).parse(body);
+      return json({status:await saveJobDraft(id,parsed.outline,parsed.checkpoint,deps)});
+    }
     const parsed=z.strictObject({outline:outlineSchema,acceptShortfall:z.boolean(),checkpoint}).parse(body);
     return json({status:await confirmJobOutline(id,parsed.outline,parsed.acceptShortfall,deps,parsed.checkpoint)});
   }catch(error){

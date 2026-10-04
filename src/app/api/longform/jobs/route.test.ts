@@ -10,6 +10,16 @@ describe('bounded local job routes',()=>{
   const get=await handleJobRequest(request(null,'GET'),'get',status.id,f.deps);expect(get.headers.get('Cache-Control')).toBe('no-store');expect((await get.json()).input.sourceText).toBe('私密材料');expect(f.calls()).toBe(0);
   expect((await handleJobRequest(request(null,'DELETE'),'delete',status.id,f.deps)).status).toBe(200);expect((await handleJobRequest(request(null,'GET'),'get',status.id,f.deps)).status).toBe(400);
  }finally{await rm(f.root,{recursive:true,force:true});}});
+ it('saves reviewed drafts without paid calls and restores them',async()=>{const f=await fixture();try{
+  const {createJob,readJob,saveJob,jobRevision}=await import('../../../../server/longform/store');
+  const job=await createJob(f.root,(await import('../../../../domain/longform')).longformRequestSchema.parse({sourceText:'材料解释',slideCount:1}),'model');
+  const outline={title:'材料',slides:[{id:'cover',role:'opening' as const,layout:'title' as const,title:'材料',keyMessage:'解释'}]};
+  job.stage='review';job.outline=outline;job.outlineParts=[outline.slides];job.story={supportedPages:1,sections:[{id:'s',theme:'解释',sourceRanges:[[0,4]],pageBudget:1}]};job.revision=jobRevision(job);await saveJob(f.root,job);
+  const checkpoint=(await import('../../../../server/longform/job')).jobStatus(job).checkpoint;
+  const edited={...outline,slides:[{...outline.slides[0],title:'修改标题'}]};
+  const response=await handleJobRequest(request({draft:true,outline:edited,checkpoint}),'outline',job.id,f.deps);expect(response.status).toBe(200);
+  expect((await readJob(f.root,job.id)).draftOutline?.slides[0].title).toBe('修改标题');expect(f.calls()).toBe(0);
+ }finally{await rm(f.root,{recursive:true,force:true});}});
  it('limits actual stream bytes independently of content-length',async()=>{const f=await fixture();try{
   const body=JSON.stringify({sourceText:'字'.repeat(180000),extra:' '.repeat(600000),slideCount:100});
   const req=request(body);req.headers.set('Content-Length','1');expect((await handleJobRequest(req,'create',undefined,f.deps)).status).toBe(413);expect(f.calls()).toBe(0);

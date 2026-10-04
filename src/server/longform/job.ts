@@ -16,7 +16,7 @@ export type JobDeps={root:string;settingsFile:string;env:NodeJS.ProcessEnv;fetch
 export type JobStatus={id:string;stage:LongformJob['stage'];completed:number;total:number;checkpoint:string;outline?:Outline;supportedPages?:number;reason?:string;actualSlides?:number;error?:string};
 export function modelFingerprint(config:ModelConfig):string{return createHash('sha256').update(JSON.stringify(config)).digest('hex');}
 export function jobStatus(job:LongformJob):JobStatus{
-  return {id:job.id,stage:job.stage,completed:job.cursor,total:job.stage==='content'?Math.ceil((job.outline?.slides.length??0)/8):job.stage==='outline'?job.story?.supportedPages??0:job.stage==='summarize'?(job.summaryLevel?Math.ceil(job.digests.length/8):job.chunks.length):1,checkpoint:createHash('sha256').update(JSON.stringify([job.revision,job.stage,job.summaryLevel,job.cursor,job.outlineParts.length,job.completed.length])).digest('hex'),outline:job.outline,supportedPages:job.story?.supportedPages,reason:job.story?.reason,actualSlides:job.stage==='ready'?job.completed.flat().length:undefined,error:job.error};
+  return {id:job.id,stage:job.stage,completed:job.stage==='ready'?job.completed.flat().length:job.cursor,total:job.stage==='ready'?job.completed.flat().length:job.stage==='content'?job.cursor+Math.ceil(((job.outline?.slides.length??0)-job.completed.flat().filter(p=>p.continuationIndex===0).length)/8):job.stage==='outline'?job.story?.supportedPages??0:job.stage==='summarize'?(job.summaryLevel?Math.ceil(job.digests.length/8):job.chunks.length):1,checkpoint:createHash('sha256').update(JSON.stringify([job.revision,job.stage,job.summaryLevel,job.cursor,job.outlineParts.length,job.completed.length])).digest('hex'),outline:job.draftOutline??job.outline,supportedPages:job.story?.supportedPages,reason:job.story?.reason,actualSlides:job.stage==='ready'?job.completed.flat().length:undefined,error:job.error};
 }
 async function model(job:LongformJob,deps:JobDeps){
   const selected=await activeModel(deps.settingsFile,deps.env);const fingerprint=modelFingerprint(selected.config);
@@ -49,18 +49,23 @@ export async function stepJob(id:string,deps:JobDeps,expectedCheckpoint?:string)
         const size=Math.min(8,budget-job.cursor);const pages=await planOutlineBatch(section,size,job.input,job.digests,preceding,config,key,deps.fetcher);job.outlineParts.push(pages);job.cursor+=size;
         if(job.cursor===job.story!.supportedPages){job.outline=assembleOutline(job.input,job.outlineParts,job.story!.supportedPages,job.input.sourceText);job.revision=jobRevision(job);job.stage='review';job.cursor=0;}
       }else if(job.stage==='content'){
-        const selected=job.outline!.slides.slice(job.cursor*8,job.cursor*8+8);
-        // Bound current source to relevant story sections; each section budget maps to original pre-edit IDs.
-        const original=job.outlineParts.flat();const sourceSections=new Set<number>();
-        for(const anchor of selected){const index=original.findIndex(p=>p.id===anchor.id);let end=0;const sectionIndex=job.story!.sections.findIndex(s=>{end+=s.pageBudget;return index<end;});if(sectionIndex<0)throw new JobError('大纲来源映射失效');sourceSections.add(sectionIndex);}
-        const excerpt=[...sourceSections].map(i=>sectionSource(job.story!.sections[i],job.input.sourceText)).join('\n');
-        if(excerpt.length>20_004)throw new JobError('该批页面跨越过多材料，请将相关页排在一起',422);
+        const done=job.completed.flat().filter(p=>p.continuationIndex===0).length;
+        const selected:Outline['slides']=[];
+        // Respect user ordering: shrink the batch, not the source or accepted order.
+        const original=job.outlineParts.flat();const sourceSections=new Set<number>();let excerpt='';
+        for(const anchor of job.outline!.slides.slice(done,done+8)){
+          const index=original.findIndex(p=>p.id===anchor.id);let end=0;
+          const sectionIndex=job.story!.sections.findIndex(s=>{end+=s.pageBudget;return index<end;});if(index<0||sectionIndex<0)throw new JobError('大纲来源映射失效');
+          const next=new Set([...sourceSections,sectionIndex]);const text=[...next].map(i=>sectionSource(job.story!.sections[i],job.input.sourceText)).join('\n');
+          if(text.length>20_004)break;sourceSections.add(sectionIndex);excerpt=text;selected.push(anchor);
+        }
+        if(!selected.length)throw new JobError('页面材料上下文超出预算',422);
         const fixedStyle:StyleId|undefined=job.completed.length?job.input.styleChoice==='auto'?job.suggestedStyle??'classic':job.input.styleChoice:undefined;
         const result=await planDeckBatch(job.input,selected,excerpt,job.input.sourceText,config,key,deps.fetcher,fixedStyle);
         if(job.completed.length===0)job.suggestedStyle=result.suggestedStyle;
         if(job.completed.flat().length+result.pages.length>100)throw new JobError('续页后超过100页，请减少大纲或缩短内容',422);
         job.completed.push(result.pages);job.cursor++;
-        if(job.cursor*8>=job.outline!.slides.length){finalPages(job);job.stage='ready';}
+        if(done+selected.length===job.outline!.slides.length){finalPages(job);job.stage='ready';}
       }
       job.error=undefined;job.updatedAt=deps.now?.()??Date.now();await saveJob(deps.root,job);return jobStatus(job);
     }catch(error){
@@ -70,15 +75,24 @@ export async function stepJob(id:string,deps:JobDeps,expectedCheckpoint?:string)
     }
   });
 }
+export async function saveJobDraft(id:string,outline:Outline,checkpoint:string,deps:JobDeps):Promise<JobStatus>{
+  return withJobLock(id,async()=>{
+    const job=await readJob(deps.root,id);
+    if(jobStatus(job).checkpoint!==checkpoint || !['review','content','ready'].includes(job.stage))throw new JobError('任务进度已改变，请刷新状态',409);
+    const draft=outlineSchema.parse(outline);
+    if(draft.slides.length>job.story!.supportedPages || draft.slides.some(p=>!job.outlineParts.flat().some(a=>a.id===p.id)))throw new JobError('大纲页面标识不匹配');
+    job.draftOutline=draft;job.updatedAt=deps.now?.()??Date.now();await saveJob(deps.root,job);return jobStatus(job);
+  });
+}
 export async function confirmJobOutline(id:string,outline:Outline,acceptShortfall:boolean,deps:JobDeps,expectedCheckpoint?:string):Promise<JobStatus>{
   return withJobLock(id,async()=>{
     const job=await readJob(deps.root,id);await model(job,deps);
     if(expectedCheckpoint && jobStatus(job).checkpoint!==expectedCheckpoint)throw new JobError('大纲版本已改变，请刷新状态',409);
     if(!['review','content','ready'].includes(job.stage))throw new JobError('尚未完成大纲',409);
-    const valid=outlineSchema.parse(outline);if(valid.slides.length!==job.story!.supportedPages)throw new JobError('大纲页数不匹配');
+    const valid=outlineSchema.parse(outline);if(valid.slides.length>job.story!.supportedPages)throw new JobError('大纲页数不匹配');
     const ids=job.outlineParts.flat().map(p=>p.id);if(valid.slides.some(p=>!ids.includes(p.id)))throw new JobError('大纲页面标识不匹配');
     if(valid.slides.length<job.input.slideCount&&!acceptShortfall)throw new JobError('请明确接受较少页数或补充材料');
-    assertEvidence(valid,job.input.sourceText);job.outline=valid;job.acceptedPages=valid.slides.length;job.completed=[];job.suggestedStyle=undefined;job.cursor=0;job.stage='content';job.error=undefined;job.revision=jobRevision(job);job.updatedAt=deps.now?.()??Date.now();await saveJob(deps.root,job);return jobStatus(job);
+    assertEvidence(valid,job.input.sourceText);job.outline=valid;job.draftOutline=undefined;job.acceptedPages=valid.slides.length;job.completed=[];job.suggestedStyle=undefined;job.cursor=0;job.stage='content';job.error=undefined;job.revision=jobRevision(job);job.updatedAt=deps.now?.()??Date.now();await saveJob(deps.root,job);return jobStatus(job);
   });
 }
 export async function downloadJob(id:string,deps:JobDeps):Promise<Response>{

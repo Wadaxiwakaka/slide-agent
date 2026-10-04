@@ -24,7 +24,8 @@ describe('recoverable job orchestration',()=>{
  it.each([20,100])('completes %i editable pages and freezes first auto style',async(target)=>{
   const f=await fixture(target);try{
    await expect(downloadJob(f.job.id,f.deps)).rejects.toThrow();const review=await advance(f.job.id,f.deps,'review');
-   await confirmJobOutline(f.job.id,review.outline!,false,f.deps);await advance(f.job.id,f.deps,'ready');
+   await confirmJobOutline(f.job.id,review.outline!,false,f.deps);const ready=await advance(f.job.id,f.deps,'ready');
+   expect(ready.completed).toBe(target);expect(ready.total).toBe(target);
    const response=await downloadJob(f.job.id,f.deps);expect(response.headers.get('X-SlideAgent-Style')).toBe('warm');
    const zip=await JSZip.loadAsync(await response.arrayBuffer());expect(Object.keys(zip.files).filter(p=>/^ppt\/slides\/slide\d+\.xml$/.test(p))).toHaveLength(target);
    expect(f.getCalls()).toBe(Math.ceil(target/8));expect(await zip.file('ppt/slides/slide1.xml')!.async('string')).toContain('观点一');
@@ -37,11 +38,26 @@ describe('recoverable job orchestration',()=>{
    await expect(stepJob(f.job.id,f.deps,start)).rejects.toThrow(/进度/);
   }finally{await rm(f.root,{recursive:true,force:true});}
  });
+ it('keeps cross-section user reordering by shrinking content batches to source budget',async()=>{
+  const f=await fixture(4);try{
+   const job=await readJob(f.root,f.job.id);job.input.sourceText='材'.repeat(20000)+'原'.repeat(5000);job.chunks=(await import('./source')).splitSource(job.input.sourceText);
+   job.story={supportedPages:4,sections:[{id:'a',theme:'甲',sourceRanges:[[0,5000],[5000,10000],[10000,15000],[15000,20000]],pageBudget:2},{id:'b',theme:'乙',sourceRanges:[[20000,25000]],pageBudget:2}]};
+   job.outlineParts=[[page(0),page(1),page(2),page(3)]];job.outline={title:'材料',slides:job.outlineParts.flat()};job.stage='review';job.revision=jobRevision(job);await saveJob(f.root,job);
+   const edited={...job.outline,slides:[page(0),page(2),page(1),page(3)]};await confirmJobOutline(job.id,edited,false,f.deps);
+   await advance(job.id,f.deps,'ready');expect(f.getCalls()).toBe(4);
+   expect((await readJob(f.root,job.id)).completed.flat().filter(p=>p.continuationIndex===0).map(p=>p.anchorId)).toEqual(edited.slides.map(p=>p.id));
+  }finally{await rm(f.root,{recursive:true,force:true});}
+ });
  it('honors manual style over model suggestion',async()=>{
   const f=await fixture(2);try{
    const job=await readJob(f.root,f.job.id);job.input.styleChoice='classic';job.revision=jobRevision(job);await saveJob(f.root,job);
    const review=await advance(job.id,f.deps,'review');await confirmJobOutline(job.id,review.outline!,false,f.deps);await advance(job.id,f.deps,'ready');
    expect((await downloadJob(job.id,f.deps)).headers.get('X-SlideAgent-Style')).toBe('classic');
+  }finally{await rm(f.root,{recursive:true,force:true});}
+ });
+ it('allows an explicitly accepted reduced outline to reserve room for continuations',async()=>{
+  const f=await fixture(4);try{const s=await advance(f.job.id,f.deps,'review');const reduced={...s.outline!,slides:s.outline!.slides.slice(0,3)};
+   await confirmJobOutline(f.job.id,reduced,true,f.deps);await advance(f.job.id,f.deps,'ready');expect((await downloadJob(f.job.id,f.deps)).headers.get('X-SlideAgent-Pages')).toBe('3');
   }finally{await rm(f.root,{recursive:true,force:true});}
  });
  it('requires explicit shortfall acceptance',async()=>{

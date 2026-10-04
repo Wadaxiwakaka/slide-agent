@@ -20,4 +20,8 @@ it('offers editable messages and accessible order controls while the cover remai
   expect(html).toContain('maxLength="110"');
   expect(html).toContain('确认大纲并生成 PPTX');
   expect(html).toContain('重新生成大纲');
+  expect(html).not.toContain('移除第');
+  const longHtml = renderToStaticMarkup(createElement(OutlineEditor, { outline, onChange: () => {}, onRegenerate: () => {}, onConfirm: () => {}, busy: false, persistent: true }));
+  expect(longHtml).toContain('aria-label="移除第 2 页"');
+  expect(longHtml).not.toContain('aria-label="移除第 1 页"');
 });

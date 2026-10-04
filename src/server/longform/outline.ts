@@ -47,7 +47,7 @@ export async function planOutlineBatch(section:StoryPlan['sections'][number],bat
     try{
       const pages=schema.parse(JSON.parse(output)).slides;
       const all=[...preceding,...pages];
-      outlineSchema.parse({title:input.topic||all[0].title,slides:all});
+      outlineSchema.parse({title:all[0].title,slides:all});
       if(!uniquePages(all))throw new LongformPlanningError();
       assertEvidence({title:all[0].title,slides:pages},input.sourceText);
       return pages;

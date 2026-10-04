@@ -29,6 +29,10 @@ describe('long-form narrative planning',()=>{
     }
     expect(assembleOutline(request,batches,total,input.sourceText).slides).toHaveLength(total);
   });
+  it('accepts a valid long topic while using the model cover title for the outline',async()=>{
+    const result=await planOutlineBatch(section,1,{...input,topic:'主题'.repeat(100)},digests,[],config,'secret',(async()=>reply({slides:[page(0)]})) as typeof fetch);
+    expect(result).toEqual([page(0)]);
+  });
   it.each(['duplicate','number','quote','cover'])('rejects %s in a subsequent batch',async(kind)=>{
     const invalid={...page(1),...(kind==='duplicate'?{keyMessage:page(0).keyMessage}:kind==='number'?{keyMessage:'增长10%'}:kind==='quote'?{role:'evidence',sourceQuotes:['伪造原文']}:{role:'opening',layout:'title'})};
     let calls=0;
