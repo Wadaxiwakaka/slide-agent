@@ -77,7 +77,7 @@ export async function parseJsonRequest(request: Request): Promise<unknown> {
   catch { throw new ModelManagementError('请求 JSON 无效'); }
 }
 
-export function checkJsonRequest(request: Request): Response | null {
+export function checkLocalRequest(request: Request): Response | null {
   const origin = request.headers.get('origin');
   const host = request.headers.get('host') ?? new URL(request.url).host;
   try {
@@ -87,6 +87,12 @@ export function checkJsonRequest(request: Request): Response | null {
       return Response.json({ error: '跨站请求被拒绝' }, { status: 403 });
     }
   } catch { return Response.json({ error: '请求主机无效' }, { status: 403 }); }
+  return null;
+}
+
+export function checkJsonRequest(request: Request): Response | null {
+  const local = checkLocalRequest(request);
+  if (local) return local;
   if (!request.headers.get('content-type')?.toLowerCase().startsWith('application/json')) return Response.json({ error: '仅接受 JSON' }, { status: 415 });
   return null;
 }
