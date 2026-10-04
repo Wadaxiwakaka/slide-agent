@@ -17,7 +17,7 @@ export function assertWithinSlide(elements: Element[], theme: Theme): void {
 
 export class LayoutOverflowError extends Error {}
 
-function fitText(elements: Element[]): void {
+function fitText(elements: Element[], minSize = 14): void {
   // ponytail: conservative glyph budget; replace with measured text when M3 visual QA exists.
   for (const element of elements) {
     if (element.kind !== 'text') continue;
@@ -28,12 +28,13 @@ function fitText(elements: Element[]): void {
       const lines = element.value.split(/\r?\n/).reduce((sum, line) => sum + Math.max(1, Math.ceil(units(line) / capacity)), 0);
       return lines * element.size * 1.22 <= element.h * 72;
     };
-    while (element.size > 14 && !fits()) element.size--;
+    element.size = Math.max(element.size, minSize);
+    while (element.size > minSize && !fits()) element.size--;
     if (!fits()) throw new LayoutOverflowError('幻灯片文字过多，无法在当前版式中清晰显示，请缩短内容');
   }
 }
 
-export function layoutSlide(slide: SlideSpec, theme: Theme): Element[] {
+export function layoutSlide(slide: SlideSpec, theme: Theme, options: { minBodySize?: number } = {}): Element[] {
   const { width, margin, gap, colors } = theme;
   const usable = width - 2 * margin;
   const elements: Element[] = [];
@@ -72,7 +73,14 @@ export function layoutSlide(slide: SlideSpec, theme: Theme): Element[] {
 
     switch (slide.layout) {
       case 'title_body':
-        if (theme.styleId === 'dark') {
+        if (options.minBodySize) {
+          const h = 4.65 / slide.bullets.length;
+          slide.bullets.forEach((bullet, i) => {
+            const y = 2.05 + i * h;
+            rect(margin, y, 0.08, h - 0.18, colors.primary);
+            text(bullet, margin + 0.3, y + 0.04, usable - 0.5, h - 0.18);
+          });
+        } else if (theme.styleId === 'dark') {
           const columns = slide.bullets.length > 1 && slide.bullets.every((bullet) => bullet.length < 55) ? 2 : 1;
           const w = (usable - (columns - 1) * gap) / columns;
           slide.bullets.forEach((bullet, i) => {
@@ -109,7 +117,7 @@ export function layoutSlide(slide: SlideSpec, theme: Theme): Element[] {
         break;
       }
       case 'comparison': {
-        const stacked = theme.styleId === 'warm';
+        const stacked = !options.minBodySize && theme.styleId === 'warm';
         const w = stacked ? usable : (usable - gap) / 2;
         [slide.left, slide.right].forEach((side, i) => {
           const x = stacked ? margin : margin + i * (w + gap);
@@ -118,7 +126,8 @@ export function layoutSlide(slide: SlideSpec, theme: Theme): Element[] {
           rect(x, y, w, h);
           rect(x, y, stacked ? 0.09 : w, stacked ? h : 0.09, i === 0 ? colors.muted : colors.primary);
           text(side.heading, x + 0.3, stacked ? y + 0.28 : y + 0.32, stacked ? 2.55 : w - 0.6, 0.62, 23, true);
-          side.items.forEach((item, j) => text(`•  ${item}`, x + (stacked ? 3.05 : 0.3), stacked ? y + 0.18 + j * 0.54 : y + 1.18 + j * 0.88, stacked ? w - 3.35 : w - 0.6, stacked ? 0.5 : 0.72, 17));
+          const itemHeight = options.minBodySize ? 3 / side.items.length : 0.88;
+          side.items.forEach((item, j) => text(`•  ${item}`, x + (stacked ? 3.05 : 0.3), stacked ? y + 0.18 + j * 0.54 : y + 1.18 + j * itemHeight, stacked ? w - 3.35 : w - 0.6, options.minBodySize ? itemHeight - 0.12 : stacked ? 0.5 : 0.72, 17));
         });
         break;
       }
@@ -154,6 +163,16 @@ export function layoutSlide(slide: SlideSpec, theme: Theme): Element[] {
         break;
       }
       case 'process': {
+        if (options.minBodySize) {
+          const w = (usable - (slide.steps.length - 1) * gap) / slide.steps.length;
+          slide.steps.forEach((step, i) => {
+            const x = margin + i * (w + gap);
+            rect(x, 2.05, w, 4.5);
+            text(step.heading, x + 0.2, 2.3, w - 0.4, 0.8, 20, true);
+            text(step.detail, x + 0.2, 3.4, w - 0.4, 2.7, 17);
+          });
+          break;
+        }
         const columns = theme.styleId === 'dark' ? Math.ceil(slide.steps.length / 2) : slide.steps.length;
         const w = (usable - (columns - 1) * gap) / columns;
         slide.steps.forEach((step, i) => {
@@ -173,6 +192,6 @@ export function layoutSlide(slide: SlideSpec, theme: Theme): Element[] {
     }
   }
   assertWithinSlide(elements, theme);
-  fitText(elements);
+  fitText(elements, options.minBodySize);
   return elements;
 }

@@ -3,7 +3,7 @@ import { deckSchema, type DeckSpec } from '../domain/deck';
 import { defaultTheme, type Theme } from '../domain/theme';
 import { layoutSlide } from './layout';
 
-export async function renderDeck(deck: DeckSpec, theme: Theme = defaultTheme): Promise<Buffer> {
+export async function renderDeck(deck: DeckSpec, theme: Theme = defaultTheme, options: { minBodySize?: number; disableAutoShrink?: boolean } = {}): Promise<Buffer> {
   const valid = deckSchema.parse(deck);
   const pptx = new pptxgen();
   pptx.defineLayout({ name: 'SLIDE_AGENT', width: theme.width, height: theme.height });
@@ -15,13 +15,13 @@ export async function renderDeck(deck: DeckSpec, theme: Theme = defaultTheme): P
   for (const spec of valid.slides) {
     const slide = pptx.addSlide();
     slide.background = { color: theme.colors.background };
-    for (const element of layoutSlide(spec, theme)) {
+    for (const element of layoutSlide(spec, theme, options)) {
       const { x, y, w, h } = element;
       if (element.kind === 'text') {
         slide.addText(element.value, {
           x, y, w, h, fontFace: theme.font, fontSize: element.size,
           bold: element.bold, color: element.color, align: element.align,
-          margin: 0, valign: 'middle', fit: 'shrink',
+          margin: 0, valign: 'middle', fit: options.disableAutoShrink ? undefined : 'shrink',
         });
       } else if (element.kind === 'rect') {
         slide.addShape(pptx.ShapeType.rect, {
